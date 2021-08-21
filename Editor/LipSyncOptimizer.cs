@@ -2,13 +2,15 @@ using UnityEngine;
 using UnityEditor;
 using UnityEditor.Animations;
 using VRC.SDK3.Avatars.Components;
+using VRC.SDKBase;
 
 public class LipSyncOptimizer : EditorWindow
 {
     private static GameObject _avatar;
     private AnimationClip _mouthOffAnim;
-    private static bool _japanese;
+    private static bool _japanese = true;
     private const string LAYER_PREFIX = "LipSyncOptimizer";
+    private const string PARAM_VISEME = "Viseme";
 
     [MenuItem("GameObject/LipSyncOptimizer", false, 20)]
     public static void Initialize()
@@ -42,11 +44,12 @@ public class LipSyncOptimizer : EditorWindow
         var m_anim = new Messages("アニメーション", "Animation");
         _mouthOffAnim = EditorGUILayout.ObjectField(m_anim.GetString(), _mouthOffAnim, typeof(AnimationClip), true) as AnimationClip;
         var m_animInfo = new Messages(
-            "リップシンクを除く、口に関する Blend Shape をすべて 0 にしたアニメーションを指定してください。",
-            "Specify an animation which sets Blend Shapes other than lip sync 0."
+            "リップシンクに関するもの (VRC.v_～から始まる名前のもの) を除く、口に関する Blend Shape をすべて 0 にしたアニメーションを指定してください。",
+            "Specify an animation with all blend shapes for the mouth set to 0, !!! expect for lip sync (Starts with \"VRC.v_\") !!!"
         );
         EditorGUILayout.HelpBox(m_animInfo.GetString(), MessageType.Info);
-        var validity = ValidateAvatar();
+        var avatarValidity = ValidateAvatar();
+        var validity = avatarValidity && ValidateAnimation();
         using (new EditorGUI.DisabledScope(!validity))
         {
             EditorGUILayout.Space();
@@ -56,6 +59,9 @@ public class LipSyncOptimizer : EditorWindow
                 Clean();
                 Apply();
             }
+        }
+        using (new EditorGUI.DisabledScope(!avatarValidity))
+        {
             EditorGUILayout.Space();
             var m_clean = new Messages("元に戻す", "Clean");
             if (GUILayout.Button(m_clean.GetString()))
@@ -63,6 +69,21 @@ public class LipSyncOptimizer : EditorWindow
                 Clean();
             }
         }
+    }
+
+    private bool ValidateAnimation()
+    {
+        var ret = true;
+        if (!_mouthOffAnim)
+        {
+            var m = new Messages(
+                "アニメーションが指定されていません。",
+                "Animation is not specified."
+            );
+            EditorGUILayout.HelpBox(m.GetString(), MessageType.Error);
+            ret = false;
+        }
+        return ret;
     }
     private bool ValidateAvatar()
     {
@@ -72,15 +93,6 @@ public class LipSyncOptimizer : EditorWindow
             var m = new Messages(
                 "アバターが指定されていません。",
                 "Avatar is not specified.");
-            EditorGUILayout.HelpBox(m.GetString(), MessageType.Error);
-            ret = false;
-        }
-        if (!_mouthOffAnim)
-        {
-            var m = new Messages(
-                "アニメーションが指定されていません。",
-                "Animation is not specified."
-            );
             EditorGUILayout.HelpBox(m.GetString(), MessageType.Error);
             ret = false;
         }
@@ -135,24 +147,56 @@ public class LipSyncOptimizer : EditorWindow
     private void Clean()
     {
         var controller = GetFXController();
-        foreach (var layer in controller.layers)
+        for (var i = 0; i < controller.layers.Length; i++)
         {
+            var layer = controller.layers[i];
             if (layer.name.StartsWith(LAYER_PREFIX))
             {
-                controller.RemoveLayer(ArrayUtility.IndexOf(controller.layers, layer));
+                controller.RemoveLayer(i);
             }
         }
     }
     private void Apply()
     {
         var controller = GetFXController();
+        controller.AddParameter(PARAM_VISEME, AnimatorControllerParameterType.Int);
         var layer = NewLayer(LAYER_PREFIX);
         var disable = layer.stateMachine.AddState("Disable");
         var enable = layer.stateMachine.AddState("Enable");
+        enable.motion = _mouthOffAnim;
+
+        try
+        {
+            var tracking = enable.AddStateMachineBehaviour<VRCAnimatorTrackingControl>();
+            tracking.trackingMouth = VRC_AnimatorTrackingControl.TrackingType.Tracking;
+        }
+        catch
+        {
+            Debug.Log("Nice catch!");
+        }
+
+        enable.writeDefaultValues = false;
+        disable.writeDefaultValues = false;
+        var to_enable = disable.AddTransition(enable, false);
+        to_enable.AddCondition(AnimatorConditionMode.NotEqual, 0.0f, PARAM_VISEME);
+        to_enable.duration = 0.0f;
+        var to_disable = enable.AddTransition(disable, false);
+        to_disable.AddCondition(AnimatorConditionMode.Equals, 0.0f, PARAM_VISEME);
+        to_disable.duration = 0.0f;
+        controller.AddLayer(layer);
     }
     private VRCAvatarDescriptor GetAvatarDescriptor()
     {
-        return _avatar.GetComponent<VRCAvatarDescriptor>();
+        VRCAvatarDescriptor descriptor;
+        try
+        {
+            descriptor = _avatar.GetComponent<VRCAvatarDescriptor>();
+        }
+        catch
+        {
+            descriptor = null;
+        }
+        return descriptor;
     }
     private AnimatorController GetFXController()
     {
