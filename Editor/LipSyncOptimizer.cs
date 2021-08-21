@@ -165,15 +165,8 @@ public class LipSyncOptimizer : EditorWindow
         var enable = layer.stateMachine.AddState("Enable");
         enable.motion = _mouthOffAnim;
 
-        try
-        {
-            var tracking = enable.AddStateMachineBehaviour<VRCAnimatorTrackingControl>();
-            tracking.trackingMouth = VRC_AnimatorTrackingControl.TrackingType.Tracking;
-        }
-        catch
-        {
-            Debug.Log("Nice catch!");
-        }
+        var tracking = enable.AddStateMachineBehaviour<VRCAnimatorTrackingControl>();
+        tracking.trackingMouth = VRC_AnimatorTrackingControl.TrackingType.Tracking;
 
         enable.writeDefaultValues = false;
         disable.writeDefaultValues = false;
