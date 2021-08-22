@@ -159,17 +159,29 @@ public class LipSyncOptimizer : EditorWindow
     private void Apply()
     {
         var controller = GetFXController();
-        controller.AddParameter(PARAM_VISEME, AnimatorControllerParameterType.Int);
+        var visemeExists = false;
+        foreach (var param in controller.parameters)
+        {
+            if (param.name == PARAM_VISEME)
+            {
+                visemeExists = true;
+            }
+        }
+        if (!visemeExists)
+        {
+            controller.AddParameter(PARAM_VISEME, AnimatorControllerParameterType.Int);
+        }
         var layer = NewLayer(LAYER_PREFIX);
         var disable = layer.stateMachine.AddState("Disable");
         var enable = layer.stateMachine.AddState("Enable");
         enable.motion = _mouthOffAnim;
 
-        var tracking = enable.AddStateMachineBehaviour<VRCAnimatorTrackingControl>();
-        tracking.trackingMouth = VRC_AnimatorTrackingControl.TrackingType.Tracking;
+        //var tracking = enable.AddStateMachineBehaviour<VRCAnimatorTrackingControl>();
+        //VRC_AnimatorTrackingControl.Initialize(tracking);
+        //tracking.trackingMouth = VRC_AnimatorTrackingControl.TrackingType.Tracking;
 
-        enable.writeDefaultValues = false;
-        disable.writeDefaultValues = false;
+        enable.writeDefaultValues = true;
+        disable.writeDefaultValues = true;
         var to_enable = disable.AddTransition(enable, false);
         to_enable.AddCondition(AnimatorConditionMode.NotEqual, 0.0f, PARAM_VISEME);
         to_enable.duration = 0.0f;
